@@ -2,7 +2,6 @@ package com.example.gopanda.view.fragments
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -11,13 +10,10 @@ import android.content.Context.NOTIFICATION_SERVICE
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.location.Geocoder
 import android.location.Location
-import android.location.LocationRequest
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -28,7 +24,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.ContextCompat.getSystemService
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.drawable.IconCompat
 import androidx.fragment.app.Fragment
@@ -36,8 +31,6 @@ import androidx.lifecycle.lifecycleScope
 import com.example.gopanda.R
 import com.example.gopanda.databinding.FragmentOrderDetailsBinding
 import com.example.gopanda.models.FragmentsData
-import com.example.gopanda.util.toast
-import com.example.gopanda.view.mainactivities.MainActivity
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -48,11 +41,11 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MarkerOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.Locale
-import kotlin.random.Random
 
 
 @Suppress("DEPRECATION")
@@ -157,21 +150,13 @@ class OrderDetails(
     override fun onMapReady(googleMap: GoogleMap) {
         map = googleMap
         map.mapType = GoogleMap.MAP_TYPE_SATELLITE
-        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            map.isMyLocationEnabled = true
-        } else {
-            ActivityCompat.requestPermissions(
-                requireActivity(),
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                locationRequestCode,
-            )
-        }
-        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity())
+        map.isMyLocationEnabled = true
 
+
+        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity())
         // Perform geocoding asynchronously
         lifecycleScope.launch {
+
             // Define pickup and drop-off addresses
             val pickupAddress = fragmentDatas.pickupLocation
             val dropOffAddress = fragmentDatas.dropOffLocation
@@ -199,37 +184,58 @@ class OrderDetails(
                         ).title("Drop-off Location"),
                 )
 
+                if (ActivityCompat.checkSelfPermission(
+                        requireContext(),
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
+                        requireContext(),
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+
+                    return@launch
+                }
                 fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
                     location?.let {
-                        val pickUp = LatLng(pickupLatLng.latitude, pickupLatLng.longitude)
-                        val currentLatLng = LatLng(it.latitude, it.longitude)
-                        map.addMarker(
-                            MarkerOptions()
-                                .position(
-                                    currentLatLng,
-                                ).icon(BitmapDescriptorFactory.fromBitmap(getBitmapFromDrawable(R.drawable.logo)!!))
-                                .title("Your Location"),
-                        )
-                        // Ill add something here if I want notification if I'm near at the pick up point
-                        // Create Location objects
-                        val pickupLocation = Location("").apply {
-                            latitude = pickUp.latitude
-                            longitude = pickUp.longitude
-                        }
+                        var counter=0
+                        do{
+                            val pickUp = LatLng(pickupLatLng.latitude, pickupLatLng.longitude)
+                            val currentLatLng = LatLng(it.latitude, it.longitude)
+                            map.addMarker(
+                                MarkerOptions()
+                                    .position(
+                                        currentLatLng,
+                                    ).icon(BitmapDescriptorFactory.fromBitmap(getBitmapFromDrawable(R.drawable.logo)!!))
+                                    .title("Your Location"),
+                            )
+                            // Ill add something here if I want notification if I'm near at the pick up point
+                            // Create Location objects
 
-                        val currentLocation = Location("").apply {
-                            latitude = it.latitude
-                            longitude = it.longitude
-                        }
 
-                        // Calculate the distance
-                        val distance = currentLocation.distanceTo(pickupLocation)
+                            // Show notification if within 30 meters
+                            lifecycleScope.launch {
+                                do {
 
-                        // Show notification if within 30 meters
-                        if (distance < 30) {
-                            showNotification()
-                        }
-                        Log.i("TAG","$distance m")
+                                    val pickupLocation = Location("").apply {
+                                        latitude = pickUp.latitude
+                                        longitude = pickUp.longitude
+                                    }
+
+                                    val currentLocation = Location("").apply {
+                                        latitude = it.latitude
+                                        longitude = it.longitude
+                                    }
+                                    // Calculate the distance
+                                    val distance = currentLocation.distanceTo(pickupLocation)
+                                    Log.i("TAG","$distance m")
+                                    delay(1500)
+                                    if (distance < 30) {
+                                        showNotification()
+                                    }
+                                }while (distance > 30)
+                            }
+                            counter++
+                        }while (counter  < 5)
                        }
                 }
 
@@ -251,7 +257,7 @@ class OrderDetails(
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CODE) {
             if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
-               Log.i("TAG","Notification permission Granted")
+                Log.i("TAG","Notification permission Granted")
             } else {
                 // Permission denied, handle accordingly
                 Toast.makeText(requireContext(), "Notification permission denied", Toast.LENGTH_SHORT).show()
@@ -260,12 +266,14 @@ class OrderDetails(
         }
     }
 
-
     private fun showNotification() {
-        val CHANNEL_ID = "location_alert_channel"
+        val channelId = "location_alert_channel"
         val channelName = "Location Alerts"
-        val importance = NotificationManager.IMPORTANCE_MAX
-        val channel = NotificationChannel(CHANNEL_ID, channelName, importance).apply {
+        val channel = NotificationChannel(
+            channelId,
+            channelName,
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
             description = "Channel for location alerts"
         }
         val notificationManager: NotificationManager =
@@ -286,7 +294,7 @@ class OrderDetails(
             .setIntent(bubblePendingIntent)
             .build()
 
-        val builder = NotificationCompat.Builder(requireContext(), CHANNEL_ID)
+        val builder = NotificationCompat.Builder(requireContext(), channelId)
             .setSmallIcon(R.drawable.logo)
             .setContentTitle("Location Alert")
             .setContentText("You are already near at pick up point, call the customer now.")
@@ -294,6 +302,14 @@ class OrderDetails(
             .setBubbleMetadata(bubbleData)
 
         with(NotificationManagerCompat.from(requireContext())) {
+            if (ActivityCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+
+                return
+            }
             notify(2, builder.build())
         }
     }
@@ -308,21 +324,6 @@ class OrderDetails(
             drawable.draw(canvas)
         }
         return bitmap
-    }
-
-    private suspend fun checkProximityToPickup(location: Location) {
-        val pickupLatLng = getLatLngFromAddress(fragmentDatas.pickupLocation)
-        pickupLatLng?.let {
-            val pickupLocation = Location("").apply {
-                latitude = it.latitude
-                longitude = it.longitude
-            }
-
-            val distance = location.distanceTo(pickupLocation)
-            if (distance < 30) {
-                showNotification()
-            }
-        }
     }
 
     private suspend fun getLatLngFromAddress(address: String): LatLng? =
@@ -341,11 +342,4 @@ class OrderDetails(
                 null
             }
         }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        // Stop location updates when the fragment is destroyed
-        fusedLocationClient.removeLocationUpdates(locationCallback)
-    }
-
 }
