@@ -60,13 +60,11 @@ class OrderDetails(
 ) : Fragment(),
     OnMapReadyCallback {
     private lateinit var binding: FragmentOrderDetailsBinding
+    private lateinit var map: GoogleMap
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
-
-
-    private lateinit var map: GoogleMap
     private var notificationShown = false
-
+    private var currentLocationMarker: Marker? = null
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -85,7 +83,8 @@ class OrderDetails(
                 locationResult.lastLocation?.let { location ->
                     // Log the location
                     Log.i("LocationUpdate", "Location: ${location.latitude}, ${location.longitude}")
-                    updateCurrentLocationMarker(location)
+                    addCurrentLocationMarker(location)
+                    //  updateCurrentLocationMarker(location)
                     // Check if the user is near the pickup point
                     checkProximityToPickup(location)
                 }
@@ -122,7 +121,7 @@ class OrderDetails(
         }
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
     }
-    private fun updateCurrentLocationMarker(location: Location) {
+  /*  private fun updateCurrentLocationMarker(location: Location) {
         val currentLatLng = LatLng(location.latitude, location.longitude)
 
         // Add the marker for the first time
@@ -133,8 +132,21 @@ class OrderDetails(
                 .title("Your Location")
         )
 
+    }*/
+    private fun addCurrentLocationMarker(location: Location) {
+        val currentLatLng = LatLng(location.latitude, location.longitude)
+        if (::map.isInitialized) {
+            
+            map.addMarker(
+                MarkerOptions()
+                    .position(currentLatLng)
+                    .icon(BitmapDescriptorFactory.fromBitmap(getBitmapFromDrawable(R.drawable.logo)!!))
+                    .title("Your Location")
+            )
+        } else {
+            Log.e("MapError", "Map is not initialized")
+        }
     }
-
     private fun checkProximityToPickup(location: Location) {
         val pickupLatLng = getLatLngFromAddress(fragmentDatas.pickupLocation)
 
