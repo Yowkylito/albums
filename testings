@@ -32,7 +32,6 @@ import androidx.lifecycle.lifecycleScope
 import com.example.gopanda.R
 import com.example.gopanda.databinding.FragmentOrderDetailsBinding
 import com.example.gopanda.models.FragmentsData
-import com.example.gopanda.services.LocationService
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -63,7 +62,7 @@ class OrderDetails(
     private lateinit var binding: FragmentOrderDetailsBinding
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
-    private var currentLocationMarker: Marker? = null
+
 
     private lateinit var map: GoogleMap
     private var notificationShown = false
@@ -100,21 +99,7 @@ class OrderDetails(
         return binding.root
     }
 
-    private fun updateCurrentLocationMarker(location: Location) {
-        val currentLatLng = LatLng(location.latitude, location.longitude)
-        if (currentLocationMarker == null) {
-            // Add the marker for the first time
-            currentLocationMarker = map.addMarker(
-                MarkerOptions()
-                    .position(currentLatLng)
-                    .icon(BitmapDescriptorFactory.fromBitmap(getBitmapFromDrawable(R.drawable.logo)!!))
-                    .title("Your Location")
-            )
-        } else {
-            // Update the marker's position
-            currentLocationMarker?.position = currentLatLng
-        }
-    }
+
 
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.Builder(
@@ -137,6 +122,18 @@ class OrderDetails(
         }
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
     }
+    private fun updateCurrentLocationMarker(location: Location) {
+        val currentLatLng = LatLng(location.latitude, location.longitude)
+
+        // Add the marker for the first time
+        map.addMarker(
+            MarkerOptions()
+                .position(currentLatLng)
+                .icon(BitmapDescriptorFactory.fromBitmap(getBitmapFromDrawable(R.drawable.logo)!!))
+                .title("Your Location")
+        )
+
+    }
 
     private fun checkProximityToPickup(location: Location) {
         val pickupLatLng = getLatLngFromAddress(fragmentDatas.pickupLocation)
@@ -148,7 +145,7 @@ class OrderDetails(
             }
 
             val distance = location.distanceTo(pickupLocation)
-                Log.i("TAG", "$distance m")
+            Log.i("TAG", "$distance m")
             if (distance < 30 && !notificationShown) {
                 showNotification()
                 notificationShown = true
@@ -217,7 +214,6 @@ class OrderDetails(
     // Accepting Order
     private fun FragmentOrderDetailsBinding.acceptOrder() {
         btnAcceptOrder.setOnClickListener {
-            startLocationService()
             val url = "http://maps.google.com/maps?daddr=${fragmentDatas.pickupLocation}"
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             requireContext().startActivity(intent)
@@ -412,14 +408,5 @@ class OrderDetails(
             e.printStackTrace()
             null
         }
-    private fun startLocationService() {
-        val serviceIntent = Intent(requireContext(), LocationService::class.java)
-        ContextCompat.startForegroundService(requireContext(), serviceIntent)
-    }
-
-    private fun stopLocationService() {
-        val serviceIntent = Intent(requireContext(), LocationService::class.java)
-        requireContext().stopService(serviceIntent)
-    }
 
 }
