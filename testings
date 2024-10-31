@@ -1,0 +1,351 @@
+package com.example.gopanda.view.fragments
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Context.NOTIFICATION_SERVICE
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationRequest
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.util.Log
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.ContextCompat.getSystemService
+import androidx.core.content.res.ResourcesCompat
+import androidx.core.graphics.drawable.IconCompat
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import com.example.gopanda.R
+import com.example.gopanda.databinding.FragmentOrderDetailsBinding
+import com.example.gopanda.models.FragmentsData
+import com.example.gopanda.util.toast
+import com.example.gopanda.view.mainactivities.MainActivity
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.OnMapReadyCallback
+import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.gms.maps.model.MarkerOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
+import java.util.Locale
+import kotlin.random.Random
+
+
+@Suppress("DEPRECATION")
+class OrderDetails(
+    private val fragmentDatas: FragmentsData,
+) : Fragment(),
+    OnMapReadyCallback {
+    private lateinit var binding: FragmentOrderDetailsBinding
+
+    private lateinit var map: GoogleMap
+
+    private val locationRequestCode = 1
+    private val REQUEST_CODE=200
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View? {
+
+        // Inflate the layout for this fragment
+        binding = FragmentOrderDetailsBinding.inflate(inflater, container, false)
+        binding.setDataToText()
+        binding.acceptOrder()
+        return binding.root
+    }
+
+    override fun onViewCreated(
+        view: View,
+        savedInstanceState: Bundle?,
+    ) {
+        super.onViewCreated(view, savedInstanceState)
+        val mapFragment =
+            childFragmentManager.findFragmentById(R.id.mapFragment) as SupportMapFragment
+
+        mapFragment.getMapAsync(this)
+    }
+
+    // Texts inside the fragment order details xml
+    @SuppressLint("SetTextI18n")
+    private fun FragmentOrderDetailsBinding.setDataToText() {
+        textOrderType.text = fragmentDatas.orderType
+        val priorityScheduled = ContextCompat.getColor(requireContext(), R.color.white)
+        val priorityToday = ContextCompat.getColor(requireContext(), R.color.today_prio)
+        val priorityNow = ContextCompat.getColor(requireContext(), R.color.now_prio)
+        when (fragmentDatas.orderType) {
+            context?.getString(R.string.order_type_now) -> {
+                orderDetailsContainer.setBackgroundColor(priorityNow)
+                textOrderSchedule.visibility = View.GONE
+            }
+
+            context?.getString(R.string.order_type_sched) -> {
+                orderDetailsContainer.setBackgroundColor(priorityScheduled)
+                textOrderSchedule.text = "${fragmentDatas.date}(${fragmentDatas.orderSched})"
+            }
+
+            context?.getString(R.string.order_type_today) -> {
+                orderDetailsContainer.setBackgroundColor(priorityToday)
+                textOrderSchedule.text = fragmentDatas.orderSched
+            }
+        }
+        textPrice.text = fragmentDatas.price.toString()
+        textPickUp.text =
+            getCityFromAddress(
+                requireContext(),
+                fragmentDatas.pickupLocation,
+            )
+        textDropoff.text =
+            getCityFromAddress(
+                requireContext(),
+                fragmentDatas.dropOffLocation,
+            )
+        val initialPrize = fragmentDatas.price
+        val paid = fragmentDatas.price * 0.2
+        val payablePrize = initialPrize - paid
+        textPayableAmount.text = "$payablePrize"
+        textAlreadyPaidAmount.text = "$paid"
+    }
+
+    // Accepting Order
+    private fun FragmentOrderDetailsBinding.acceptOrder() {
+        btnAcceptOrder.setOnClickListener {
+            val url = "http://maps.google.com/maps?daddr=${fragmentDatas.pickupLocation}"
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            requireContext().startActivity(intent)
+        }
+    }
+
+    // Geocoders to convert string address to
+    private fun getCityFromAddress(
+        context: Context,
+        address: String,
+    ): String? {
+        val geocoder = Geocoder(context, Locale.getDefault())
+        val addresses = geocoder.getFromLocationName(address, 1)
+        return if (addresses!!.isNotEmpty()) {
+            addresses[0].locality
+        } else {
+            null
+        }
+    }
+
+    override fun onMapReady(googleMap: GoogleMap) {
+        map = googleMap
+        map.mapType = GoogleMap.MAP_TYPE_SATELLITE
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            map.isMyLocationEnabled = true
+        } else {
+            ActivityCompat.requestPermissions(
+                requireActivity(),
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                locationRequestCode,
+            )
+        }
+        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(requireActivity())
+
+        // Perform geocoding asynchronously
+        lifecycleScope.launch {
+            // Define pickup and drop-off addresses
+            val pickupAddress = fragmentDatas.pickupLocation
+            val dropOffAddress = fragmentDatas.dropOffLocation
+
+            val hue = 204.0F // Hue value for #0099FF
+            val bitmapDescriptor = BitmapDescriptorFactory.defaultMarker(hue)
+
+            val pickupLatLng = getLatLngFromAddress(pickupAddress)
+            val dropOffLatLng = getLatLngFromAddress(dropOffAddress)
+
+            if (pickupLatLng != null && dropOffLatLng != null) {
+                // Add markers for pickup and drop-off locations
+
+                map.addMarker(
+                    MarkerOptions()
+                        .position(pickupLatLng)
+                        .icon(bitmapDescriptor)
+                        .title("Pickup Location"),
+                )
+
+                map.addMarker(
+                    MarkerOptions()
+                        .position(
+                            dropOffLatLng,
+                        ).title("Drop-off Location"),
+                )
+
+                fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+                    location?.let {
+                        val pickUp = LatLng(pickupLatLng.latitude, pickupLatLng.longitude)
+                        val currentLatLng = LatLng(it.latitude, it.longitude)
+                        map.addMarker(
+                            MarkerOptions()
+                                .position(
+                                    currentLatLng,
+                                ).icon(BitmapDescriptorFactory.fromBitmap(getBitmapFromDrawable(R.drawable.logo)!!))
+                                .title("Your Location"),
+                        )
+                        // Ill add something here if I want notification if I'm near at the pick up point
+                        // Create Location objects
+                        val pickupLocation = Location("").apply {
+                            latitude = pickUp.latitude
+                            longitude = pickUp.longitude
+                        }
+
+                        val currentLocation = Location("").apply {
+                            latitude = it.latitude
+                            longitude = it.longitude
+                        }
+
+                        // Calculate the distance
+                        val distance = currentLocation.distanceTo(pickupLocation)
+
+                        // Show notification if within 30 meters
+                        if (distance < 30) {
+                            showNotification()
+                        }
+                        Log.i("TAG","$distance m")
+                       }
+                }
+
+                // Move the camera to show both points
+                val boundsBuilder = LatLngBounds.Builder()
+                boundsBuilder.include(pickupLatLng)
+                boundsBuilder.include(dropOffLatLng)
+                val bounds = boundsBuilder.build()
+                val padding = 100
+                map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
+            } else {
+                Toast.makeText(requireContext(), "Address does not exist", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CODE) {
+            if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
+               Log.i("TAG","Notification permission Granted")
+            } else {
+                // Permission denied, handle accordingly
+                Toast.makeText(requireContext(), "Notification permission denied", Toast.LENGTH_SHORT).show()
+
+            }
+        }
+    }
+
+
+    private fun showNotification() {
+        val CHANNEL_ID = "location_alert_channel"
+        val channelName = "Location Alerts"
+        val importance = NotificationManager.IMPORTANCE_MAX
+        val channel = NotificationChannel(CHANNEL_ID, channelName, importance).apply {
+            description = "Channel for location alerts"
+        }
+        val notificationManager: NotificationManager =
+            requireContext().getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+
+        val bubbleIntent = Intent(requireActivity(), NotificationActivity::class.java)
+        val bubblePendingIntent = PendingIntent.getActivity(
+            requireContext(),
+            0,
+            bubbleIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+
+        val bubbleData = NotificationCompat.BubbleMetadata.Builder()
+            .setDesiredHeight(600)
+            .setIcon(IconCompat.createWithResource(requireContext(), R.drawable.logo))
+            .setIntent(bubblePendingIntent)
+            .build()
+
+        val builder = NotificationCompat.Builder(requireContext(), CHANNEL_ID)
+            .setSmallIcon(R.drawable.logo)
+            .setContentTitle("Location Alert")
+            .setContentText("You are already near at pick up point, call the customer now.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setBubbleMetadata(bubbleData)
+
+        with(NotificationManagerCompat.from(requireContext())) {
+            notify(2, builder.build())
+        }
+    }
+
+    private fun getBitmapFromDrawable(resId: Int): Bitmap? {
+        var bitmap: Bitmap? = null
+        val drawable = ResourcesCompat.getDrawable(resources, resId, null)
+        if (drawable != null) {
+            bitmap = Bitmap.createBitmap(150, 150, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+        }
+        return bitmap
+    }
+
+    private suspend fun checkProximityToPickup(location: Location) {
+        val pickupLatLng = getLatLngFromAddress(fragmentDatas.pickupLocation)
+        pickupLatLng?.let {
+            val pickupLocation = Location("").apply {
+                latitude = it.latitude
+                longitude = it.longitude
+            }
+
+            val distance = location.distanceTo(pickupLocation)
+            if (distance < 30) {
+                showNotification()
+            }
+        }
+    }
+
+    private suspend fun getLatLngFromAddress(address: String): LatLng? =
+        withContext(Dispatchers.IO) {
+            try {
+                val geocoder = Geocoder(requireContext(), Locale.getDefault())
+                val addresses = geocoder.getFromLocationName(address, 1)
+                if (addresses!!.isNotEmpty()) {
+                    val location = addresses[0]
+                    LatLng(location.latitude, location.longitude)
+                } else {
+                    null
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                null
+            }
+        }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        // Stop location updates when the fragment is destroyed
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+    }
+
+}
