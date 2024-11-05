@@ -8,7 +8,9 @@
         "vehicleType": "Motorcycle",
         "orderuid": "2",
         "Price": 450.00,
-        "date": "2024-10-25"
+        "date": "2024-10-25",
+        "uiddriver": null,
+        "status": "NotTaken"
     },
     {
         "distance": "2.5km",
@@ -19,7 +21,9 @@
         "vehicleType": "Car",
         "orderuid": "3",
         "Price": 600.00,
-        "date": "2024-11-15"
+        "date": "2024-11-15",
+        "uiddriver": "5678",
+        "status": "Taken"
     },
     {
         "distance": "0.9km",
@@ -30,7 +34,9 @@
         "vehicleType": "Motorcycle",
         "orderuid": "4",
         "Price": 500.00,
-        "date": "2024-10-25"
+        "date": "2024-10-25",
+        "uiddriver": "9101",
+        "status": "Completed"
     },
     {
         "distance": "3.0km",
@@ -41,7 +47,9 @@
         "vehicleType": "Motorcycle",
         "orderuid": "5",
         "Price": 550.00,
-        "date": "2024-10-25"
+        "date": "2024-10-25",
+        "uiddriver": "1121",
+        "status": "Cancel"
     },
     {
         "distance": "1.5km",
@@ -52,7 +60,9 @@
         "vehicleType": "Car",
         "orderuid": "6",
         "Price": 650.00,
-        "date": "2024-12-05"
+        "date": "2024-12-05",
+        "uiddriver": "3141",
+        "status": "Taken"
     },
     {
         "distance": "2.2km",
@@ -63,7 +73,9 @@
         "vehicleType": "Motorcycle",
         "orderuid": "7",
         "Price": 500.00,
-        "date": "2024-10-25"
+        "date": "2024-10-25",
+        "uiddriver": "5161",
+        "status": "Completed"
     },
     {
         "distance": "1.8km",
@@ -74,7 +86,9 @@
         "vehicleType": "Car",
         "orderuid": "8",
         "Price": 600.00,
-        "date": "2024-11-20"
+        "date": "2024-11-20",
+        "uiddriver": "7181",
+        "status": "Taken"
     },
     {
         "distance": "2.0km",
@@ -85,7 +99,9 @@
         "vehicleType": "Motorcycle",
         "orderuid": "9",
         "Price": 500.00,
-        "date": "2024-10-25"
+        "date": "2024-10-25",
+        "uiddriver": "9202",
+        "status": "Completed"
     },
     {
         "distance": "1.0km",
@@ -96,7 +112,9 @@
         "vehicleType": "Motorcycle",
         "orderuid": "10",
         "Price": 450.00,
-        "date": "2024-10-25"
+        "date": "2024-10-25",
+        "uiddriver": null,
+        "status": "NotTaken"
     },
     {
         "distance": "2.8km",
@@ -107,6 +125,8 @@
         "vehicleType": "Car",
         "orderuid": "11",
         "Price": 700.00,
-        "date": "2024-12-10"
+        "date": "2024-12-10",
+        "uiddriver": "3242",
+        "status": "Taken"
     }
 ]
