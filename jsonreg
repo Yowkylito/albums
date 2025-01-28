@@ -1,0 +1,20 @@
+{
+    "firstName": "oo",
+    "lastName": "ii",
+    "password": "jepSF#14",
+    "mobileNumber": "09885465444",
+    "agreedToPolicy": "1",
+    "deviceInfo": {
+        "deviceModel": "iPhone 16",
+        "deviceType": "Mobile",
+        "deviceId": "1234567",
+        "osName": "Android",
+        "osVersion": "Android 14",
+        "appVersion": "15",
+        "location": {
+            "lat": "",
+            "lon": ""
+        },
+        "screenResolution": "1920x1080"
+    }
+}
