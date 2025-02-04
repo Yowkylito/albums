@@ -1,402 +1,330 @@
-package com.bployaltyapp.compose.screen.onboarding
+package com.bployaltyapp.compose.viewmodel
 
-import android.os.Build
-import android.provider.Settings
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
-import com.bployaltyapp.compose.R
-import com.bployaltyapp.compose.component.AuthScreenDescription
-import com.bployaltyapp.compose.component.AuthTitleText
-import com.bployaltyapp.compose.component.CheckBox
-import com.bployaltyapp.compose.component.Label
-import com.bployaltyapp.compose.component.SetPasswordTextField
+import android.annotation.SuppressLint
+import android.net.http.HttpException
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.bployaltyapp.compose.model.register.RegisterIntent
+import com.bployaltyapp.compose.model.register.RegisterIntentState
 import com.bployaltyapp.compose.model.register.RegisterState
-import com.bployaltyapp.compose.navigation.RegistrationRoute
-import com.bployaltyapp.compose.navigation.SettingUpRoute
-import com.bployaltyapp.compose.utils.StatusBarConfig
 import com.bployaltyapp.compose.utils.toTitleCase
-import com.bployaltyapp.compose.values.AuthErrorMessageStyle
-import com.bployaltyapp.compose.values.ButtonEnabledFontStyle
-import com.bployaltyapp.compose.values.PasswordValidationStyle
-import com.bployaltyapp.compose.values.TextFieldHintStyle
-import com.bployaltyapp.compose.values.action_400
-import com.bployaltyapp.compose.values.action_50
-import com.bployaltyapp.compose.values.bingo_plus_action_200
-import com.bployaltyapp.compose.values.neutral_0
-import com.bployaltyapp.compose.values.transparent
-import com.bployaltyapp.compose.viewmodel.RegistrationViewModel
-import com.ldd.core.ui.components.LddVerticalSpacer
-import com.ldd.core.ui.components.lddbutton.LddButton
-import com.ldd.core.ui.components.lddtext.LddText
+import com.bployaltyapp.compose.values.neutral_100
+import com.bployaltyapp.data.repository.registration.RegistrationRepository
+import com.bployaltyapp.data.source.remote.request.RegistrationRequest
+import com.ldd.foundation.designsystem.secondary_red
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.io.IOException
+import javax.inject.Inject
 
-private fun String.toTitleCases(): String {
-    return split(" ").joinToString(" ") { it.toTitleCase() }
-}
+@HiltViewModel
+class RegistrationViewModel
+@Inject
+constructor(
+    private val registrationRepository: RegistrationRepository,
+) : ViewModel() {
+    private val _registerState = MutableStateFlow(RegisterState())
+    val registerState: StateFlow<RegisterState> = _registerState
 
-@Composable
-fun SetPasswordScreen(
-    navController: NavController,
-    isDarkMode: Boolean = false,
-    state: State<RegisterState>,
-    event: (RegisterIntent) -> Unit,
-) {
-    StatusBarConfig(isLightModeIcons = isDarkMode)
-    event(RegisterIntent.GetPhoneNumber(state.value.mobileNumber))
-    val context = LocalContext.current
-    val isGestureNavigation =
-        remember {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val navigationMode =
-                    Settings.Secure.getInt(
-                        context.contentResolver,
-                        "navigation_mode",
-                        0,
+    private val _state = MutableStateFlow<RegisterIntentState>(RegisterIntentState.Idle)
+    val state: StateFlow<RegisterIntentState> get() = _state
+
+    private var currentMobileNumber: String = ""
+
+    fun processRegisterIntent(intent: RegisterIntent) {
+        when (intent) {
+            is RegisterIntent.EnterMobileNumber -> numberValidation(intent.mobileNumber)
+            is RegisterIntent.RegMobileNumber -> phoneNumberVerification(intent.mobileNumber)
+            is RegisterIntent.AgreedToPolicy -> validatePolicy(intent.isChecked)
+            RegisterIntent.ValidationSuccess -> successValidation()
+            RegisterIntent.ValidationFailed -> failedValidation()
+            RegisterIntent.CredentialsReset -> resetCredentials()
+            is RegisterIntent.EnterOtp -> handleOtpInput(intent.otp)
+            is RegisterIntent.ResendOtp -> resendOtp(intent.phoneNumber)
+            is RegisterIntent.SubmitOtp -> submitOtp()
+            is RegisterIntent.EnterConfirmPassword -> confirmPassword(intent.confirmPassword)
+            is RegisterIntent.EnterFirstName -> updateFirstName(intent.firstName)
+            is RegisterIntent.EnterLastName -> updateLastName(intent.lastName)
+            is RegisterIntent.EnterPassword -> validatePassword(intent.password)
+            is RegisterIntent.TextFieldFocus -> focusHandler(intent.tfName, intent.focused)
+            is RegisterIntent.Register -> registration(intent.reg)
+            is RegisterIntent.GetPhoneNumber -> updatePhoneNumber(intent.phoneNumber)
+        }
+    }
+
+    private fun numberValidation(mobileNumber: String) {
+        _registerState.update { it.copy(mobileNumber = "0$mobileNumber") }
+        _registerState.value =
+            when {
+                mobileNumber.isEmpty() -> _registerState.value.copy(isMobileNumValid = false)
+                !mobileNumber.isMobileNumberValid() ->
+                    _registerState.value.copy(
+                        isMobileNumValid = false,
+                        mobileNumberError = "Please enter a valid mobile number",
                     )
-                navigationMode == 2
+                else -> _registerState.value.copy(isMobileNumValid = true, mobileNumberError = null)
+            }
+    }
+
+    private fun validatePolicy(policy: Boolean) {
+        _registerState.update { it.copy(isPolicyBoxChecked = policy) }
+    }
+
+    private fun successValidation() {
+        _registerState.update { it.copy(isPolicyBoxChecked = false, isBottomSheetShow = false, isRegistrationSuccess = false) }
+    }
+
+    private fun resetCredentials() {
+        _registerState.update { it.copy(isPolicyBoxChecked = false, isBottomSheetShow = false) }
+    }
+
+    private fun failedValidation() {
+        _registerState.update { it.copy(isBottomSheetShow = true) }
+    }
+
+    private fun phoneNumberVerification(mobileNumber: String) {
+        viewModelScope.launch {
+            _state.value = RegisterIntentState.Loading
+            try {
+                val response = registrationRepository.sendOtp(mobileNumber)
+                if (response.code == 1) {
+                    _state.value = RegisterIntentState.OtpSent(response.data)
+                } else {
+                    _registerState.update {
+                        it.copy(
+                            mobileNumberError = "Number Already Used",
+                            isMobileNumValid = false,
+                        )
+                    }
+
+                    _state.value = RegisterIntentState.Error("Sending Failed")
+                }
+            } catch (e: Exception) {
+                _state.value = RegisterIntentState.Error(e.message ?: "Unknown Error")
+            }
+        }
+    }
+
+    private fun handleOtpInput(otp: String) {
+        currentMobileNumber = registerState.value.mobileNumber
+        _registerState.update { it.copy(otp = otp) }
+        _state.value = RegisterIntentState.OtpInput(otp = otp, mobileNumber = currentMobileNumber)
+    }
+
+    private fun submitOtp() {
+        viewModelScope.launch {
+            val currentState = _state.value
+            if (currentState is RegisterIntentState.OtpInput) {
+                _state.value = RegisterIntentState.Loading
+                try {
+                    val response =
+                        registrationRepository.verifyOtp(
+                            _registerState.value.mobileNumber,
+                            _registerState.value.otp,
+                        )
+                    if (response.code == 1) {
+                        _state.value = RegisterIntentState.OtpVerified(response.data)
+                    } else {
+                        _state.value = RegisterIntentState.Error("Verification Failed")
+                    }
+                } catch (e: Exception) {
+                    _state.value = RegisterIntentState.Error(e.message ?: "Unknown Error")
+                }
             } else {
-                false
+                _state.value = RegisterIntentState.Error("Invalid state for submitting OTP")
             }
         }
-    val buttonState =
-        when {
-            state.value.validationState.isFirstNameValid &&
-                state.value.validationState.isLastNameValid &&
-                state.value.passwordState.isPasswordValid &&
-                (state.value.passwordState.passwordError == null) &&
-                (state.value.passwordState.confirmPassword.isNotEmpty()) &&
-                (state.value.passwordState.password == state.value.passwordState.confirmPassword) -> {
-                true
-            }
-            else -> {
-                false
+    }
+
+    private fun resendOtp(phoneNumber: String) {
+        viewModelScope.launch {
+            val currentState = _state.value
+            if (currentState is RegisterIntentState.OtpInput) {
+                _state.value = RegisterIntentState.Loading
+                try {
+                    val response = registrationRepository.sendOtp(phoneNumber)
+                    if (response.code == 1) {
+                        _state.value = currentState.copy(showResendSection = true)
+                    } else {
+                        _state.value = RegisterIntentState.Error("Resending Failed")
+                    }
+                } catch (e: Exception) {
+                    _state.value = RegisterIntentState.Error(e.message ?: "Unknown Error")
+                }
+            } else {
+                _state.value = RegisterIntentState.Error("Invalid state for resending OTP")
             }
         }
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(if (isDarkMode) transparent else Color.White),
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .padding(horizontal = 20.dp)
-                    .padding(top = 24.dp, bottom = 16.dp),
-        ) {
-            AuthTitleText(
-                text = stringResource(R.string.set_password),
-                fontSize = 32.sp,
+    }
+
+    private fun updateFirstName(firstName: String) {
+        _registerState.update { it.copy(firstName = firstName.toTitleCase()) }
+        _registerState.value =
+            when {
+                _registerState.value.firstName.isEmpty() ->
+                    _registerState.value.copy(
+                        isFirstNameValid = false,
+                        firstNameBorder = secondary_red,
+                        firstNameError = "First name can't be empty.",
+                    )
+                else ->
+                    _registerState.value.copy(
+                        isFirstNameValid = true,
+                        firstNameBorder = neutral_100,
+                        firstNameError = null,
+                    )
+            }
+    }
+
+    private fun updateLastName(lastName: String) {
+        _registerState.update { it.copy(lastName = lastName.toTitleCase()) }
+        _registerState.value =
+            when {
+                _registerState.value.lastName.isEmpty() ->
+                    _registerState.value.copy(
+                        isLastNameValid = false,
+                        lastNameBorder = secondary_red,
+                        lastNameError = "Last name can't be empty.",
+                    )
+                else ->
+                    _registerState.value.copy(
+                        isLastNameValid = true,
+                        lastNameBorder = neutral_100,
+                        lastNameError = null,
+                    )
+            }
+    }
+
+    private fun validatePassword(password: String) {
+        _registerState.update { it.copy(password = password) }
+        var isValid = true
+        var errorMessage: String? = null
+
+        if (password.isEmpty()) {
+            isValid = false
+            errorMessage = "Fulfill password requirements"
+        } else {
+            if (password.length < 6) {
+                isValid = false
+                errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(isPassSixCharChecked = false) }
+            } else {
+                _registerState.update { it.copy(isPassSixCharChecked = true) }
+            }
+
+            if (!password.any { it.isUpperCase() }) {
+                isValid = false
+                errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(isPassUpperCaseChecked = false) }
+            } else {
+                _registerState.update { it.copy(isPassUpperCaseChecked = true) }
+            }
+
+            if (!password.any { it.isLowerCase() }) {
+                isValid = false
+                errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(isPassLowerCaseChecked = false) }
+            } else {
+                _registerState.update { it.copy(isPassLowerCaseChecked = true) }
+            }
+
+            if (!password.any { it.isDigit() }) {
+                isValid = false
+                errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(isPassNumberChecked = false) }
+            } else {
+                _registerState.update { it.copy(isPassNumberChecked = true) }
+            }
+
+            if (!password.hasSpecialCharacter()) {
+                isValid = false
+                errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(isPassSpecialChecked = false) }
+            } else {
+                _registerState.update { it.copy(isPassSpecialChecked = true) }
+            }
+        }
+
+        _registerState.update {
+            it.copy(
+                isPasswordValid = isValid,
+                passwordError = if (isValid) null else errorMessage,
             )
+        }
+    }
 
-            LddVerticalSpacer(12.dp)
-
-            AuthScreenDescription(
-                text = "You're almost there! Please set up the password you will use for this account.",
-            )
-
-            LddVerticalSpacer(16.dp)
-
-            Label(text = stringResource(R.string.first_name))
-
-            LddVerticalSpacer(12.dp)
-
-            Row(
-                modifier =
-                    Modifier
-                        .shadow(
-                            elevation = if (!state.value.uiState.isFirstnameFocus) 0.5.dp else 2.5.dp,
-                            clip = true,
-                            shape = RoundedCornerShape(8.dp),
-                            ambientColor = transparent,
-                            spotColor = transparent,
-                        )
-                        .height(55.dp)
-                        .fillMaxWidth()
-                        .border(
-                            width = if (!state.value.uiState.isFirstnameFocus) 0.5.dp else 1.5.dp,
-                            color = state.value.uiState.firstNameBorder,
-                            shape = RoundedCornerShape(8.dp),
-                        )
-                        .background(neutral_0),
-                verticalAlignment = Alignment.CenterVertically,
+    @SuppressLint("NewApi")
+    private fun registration(regData: RegistrationRequest) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val response = registrationRepository.registerAccount(regData)
+                if (response.code == 1) {
+                    _registerState.update { it.copy(isRegistrationSuccess = true, response = response.toString()) }
+                }
+            } catch (
+                @SuppressLint("NewApi") e: HttpException,
             ) {
-                BasicTextField(
-                    value = state.value.firstName.toTitleCases(),
-                    onValueChange = {
-                        if (it.all { char -> !char.isDigit() }) {
-                            event(RegisterIntent.EnterFirstName(it))
-                        }
-                    },
-                    modifier =
-                        Modifier
-                            .background(color = transparent)
-                            .padding(start = 16.dp, end = 16.dp)
-                            .fillMaxWidth()
-                            .onFocusChanged {
-                                event(RegisterIntent.TextFieldFocus("firstname", it.isFocused))
-                            },
-                    maxLines = 1,
-                    singleLine = true,
-                    decorationBox = { innerTextField ->
-                        if (state.value.firstName.isEmpty()) {
-                            Text(
-                                text = "Enter First Name",
-                                style = TextFieldHintStyle,
-                            )
-                        }
-                        innerTextField()
-                    },
-                    keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-                )
+                Log.e("ERROR", "HTTP Exception: ${e.message}", e)
+            } catch (e: IOException) {
+                Log.e("ERROR", "Network Exception: ${e.message}", e)
+            } catch (e: Exception) {
+                Log.i("ERROR", "Unexpected Exception: ${e.message} for ${_registerState.value.response}")
             }
-            if (state.value.validationState.firstNameError != null) {
-                Text(
-                    text = state.value.validationState.firstNameError!!,
-                    style = AuthErrorMessageStyle,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-
-            LddVerticalSpacer(16.dp)
-
-            Label(text = stringResource(R.string.last_name))
-
-            LddVerticalSpacer(12.dp)
-
-            Row(
-                modifier =
-                    Modifier
-                        .shadow(
-                            elevation = if (!state.value.uiState.isLastnameFocus) 0.5.dp else 2.5.dp,
-                            clip = true,
-                            shape = RoundedCornerShape(8.dp),
-                            ambientColor = transparent,
-                            spotColor = transparent,
-                        )
-                        .height(55.dp)
-                        .fillMaxWidth()
-                        .border(
-                            width = if (!state.value.uiState.isLastnameFocus) 0.5.dp else 1.5.dp,
-                            color = state.value.uiState.lastNameBorder,
-                            shape = RoundedCornerShape(8.dp),
-                        )
-                        .background(neutral_0),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BasicTextField(
-                    value = state.value.lastName.toTitleCases(),
-                    onValueChange = {
-                        if (it.all { char -> !char.isDigit() }) {
-                            event(RegisterIntent.EnterLastName(it))
-                        }
-                    },
-                    modifier =
-                        Modifier
-                            .background(color = transparent)
-                            .padding(start = 16.dp, end = 16.dp)
-                            .fillMaxWidth()
-                            .onFocusChanged { event(RegisterIntent.TextFieldFocus("lastname", it.isFocused)) },
-                    maxLines = 1,
-                    singleLine = true,
-                    decorationBox = { innerTextField ->
-                        if (state.value.lastName.isEmpty()) {
-                            LddText(
-                                text = "Enter Last Name",
-                                style = TextFieldHintStyle,
-                            )
-                        }
-                        innerTextField()
-                    },
-                    keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
-                )
-            }
-            if (state.value.validationState.lastNameError != null) {
-                Text(
-                    text = state.value.validationState.lastNameError!!,
-                    style = AuthErrorMessageStyle,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-
-            LddVerticalSpacer(12.dp)
-
-            Label(text = stringResource(R.string.new_password))
-
-
-                SetPasswordTextField(
-                    accountPassword = state.value.passwordState.password,
-                    onPasswordChange = { newPassword ->
-                        event(RegisterIntent.EnterPassword(newPassword))
-                    },
-                    placeHolderText = stringResource(R.string.enter_new_password),
-                    state = state,
-                    borderState = state.value.passwordState.passwordBorder,
-                )
-
-
-            LddVerticalSpacer(12.dp)
-
-            Label(text = stringResource(stringlib.R.string.confirm_password_title))
-
-            SetPasswordTextField(
-                accountPassword = state.value.passwordState.confirmPassword,
-                onPasswordChange = { confirmPassword -> event(RegisterIntent.EnterConfirmPassword(confirmPassword)) },
-                placeHolderText = stringResource(stringlib.R.string.retype_password),
-                state = state,
-                borderState = state.value.passwordState.passwordBorder,
-            )
-
-            PasswordMessageSection(state = state, event = event)
-        }
-
-        LddButton(
-            onClick = { navController.navigate(SettingUpRoute) },
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = if (!isGestureNavigation)50.dp else 20.dp, start = 16.dp, end = 16.dp)
-                    .align(Alignment.BottomCenter),
-            shape = RoundedCornerShape(12.dp),
-            enabled = buttonState,
-            colors =
-                ButtonDefaults.buttonColors(
-                    containerColor = action_400,
-                    contentColor = bingo_plus_action_200,
-                    disabledContainerColor = action_50,
-                    disabledContentColor = bingo_plus_action_200,
-                ),
-        ) {
-            Text(
-                modifier = Modifier.padding(12.dp),
-                text = stringResource(R.string.create_password).uppercase(),
-                style = ButtonEnabledFontStyle,
-            )
         }
     }
-    BackHandler { navController.navigate(RegistrationRoute) }
-}
 
-@Composable
-fun PasswordMessageSection(
-    state: State<RegisterState>,
-    event: (RegisterIntent) -> Unit,
-) {
-    LddVerticalSpacer(16.dp)
-
-    Column {
-        LddText(
-            text = "Password must contain:",
-            style = PasswordValidationStyle,
-        )
-
-        LddVerticalSpacer(12.dp)
-        val setMinimumCharCheckedState = remember { mutableStateOf(false) }
-
-        PasswordValidationMessage(
-            text = "Minimum of 6 characters",
-            isChecked = state.value.passwordState.isPassSixCharChecked,
-            onCheckedChange = { setMinimumCharCheckedState.value = it },
-        )
-        LddVerticalSpacer(12.dp)
-
-        val setUpperCaseChecked = remember { mutableStateOf(false) }
-        PasswordValidationMessage(
-            text = "At least one upper case letter",
-            isChecked = state.value.passwordState.isPassUpperCaseChecked,
-            onCheckedChange = { setUpperCaseChecked.value = it },
-        )
-        val setLowerCaseChecked = remember { mutableStateOf(false) }
-
-        LddVerticalSpacer(12.dp)
-        PasswordValidationMessage(
-            text = "At least one lower case letter",
-            isChecked = state.value.passwordState.isPassLowerCaseChecked,
-            onCheckedChange = { setLowerCaseChecked.value = it },
-        )
-
-        LddVerticalSpacer(12.dp)
-
-        val setOneNumberChecked = remember { mutableStateOf(false) }
-        PasswordValidationMessage(
-            text = "At least one number",
-            isChecked = state.value.passwordState.isPassNumberChecked,
-            onCheckedChange = { setOneNumberChecked.value = it },
-        )
-
-        LddVerticalSpacer(12.dp)
-
-        val setOneSpecialCharChecked = remember { mutableStateOf(false) }
-        PasswordValidationMessage(
-            text = "At least one special character (!@\$#%*)",
-            isChecked = state.value.passwordState.isPassSpecialChecked,
-            onCheckedChange = { isChecked ->
-                setOneSpecialCharChecked.value = isChecked
-            },
-        )
-    }
-}
-
-@Composable
-fun PasswordValidationMessage(
-    text: String,
-    isChecked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    isClickable: Boolean = false,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    private fun focusHandler(
+        textFieldName: String,
+        focused: Boolean,
     ) {
-        CheckBox(
-            checked = isChecked,
-            onCheckedChange = onCheckedChange,
-            borderDp = 2.dp,
-            isClickable = isClickable,
-        )
-        LddText(
-            modifier = Modifier.padding(start = 6.dp),
-            text = text,
-            style = PasswordValidationStyle,
-        )
+        when (textFieldName.lowercase()) {
+            "firstname" -> {
+                _registerState.value = _registerState.value.copy(isFirstnameFocus = focused)
+            }
+            "lastname" -> {
+                _registerState.value = _registerState.value.copy(isLastnameFocus = focused)
+            }
+        }
     }
-}
 
-@Preview
-@Composable
-private fun SetPasswordScreenPreview() {
-    val registrationViewModel: RegistrationViewModel = hiltViewModel()
-    val state = registrationViewModel.registerState.collectAsState()
-    SetPasswordScreen(rememberNavController(), state = state, event = {})
+    private fun updatePhoneNumber(phoneNumber: String) {
+        _registerState.update { it.copy(mobileNumber = phoneNumber) }
+    }
+
+    private fun String.isMobileNumberValid(): Boolean = length == 10
+
+    private fun String.hasSpecialCharacter(): Boolean = any { !it.isLetterOrDigit() }
+
+    private fun confirmPassword(confirmPassword: String) {
+        if (confirmPassword == _registerState.value.password) {
+            _registerState.update {
+                it.copy(
+                    confirmPassword = confirmPassword,
+                    passwordError = null,
+                    passwordBorder = neutral_100,
+                )
+            }
+        } else if (!_registerState.value.isPasswordValid) {
+            _registerState.update {
+                it.copy(
+                    confirmPassword = confirmPassword,
+                    passwordError = "Fulfill password requirements",
+                    passwordBorder = secondary_red,
+                )
+            }
+        } else {
+            _registerState.update {
+                it.copy(
+                    confirmPassword = confirmPassword,
+                    passwordError = "Password not matched",
+                    passwordBorder = secondary_red,
+                )
+            }
+        }
+    }
 }
