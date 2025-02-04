@@ -5,9 +5,13 @@ import android.net.http.HttpException
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bployaltyapp.compose.model.register.PasswordState
 import com.bployaltyapp.compose.model.register.RegisterIntent
 import com.bployaltyapp.compose.model.register.RegisterIntentState
 import com.bployaltyapp.compose.model.register.RegisterState
+import com.bployaltyapp.compose.model.register.RegistrationStatus
+import com.bployaltyapp.compose.model.register.UIState
+import com.bployaltyapp.compose.model.register.ValidationState
 import com.bployaltyapp.compose.utils.toTitleCase
 import com.bployaltyapp.compose.values.neutral_100
 import com.bployaltyapp.data.repository.registration.RegistrationRepository
@@ -61,30 +65,35 @@ class RegistrationViewModel
             _registerState.update { it.copy(mobileNumber = "0$mobileNumber") }
             _registerState.value =
                 when {
-                    mobileNumber.isEmpty() -> _registerState.value.copy(isMobileNumValid = false)
+                    mobileNumber.isEmpty() -> _registerState.value.copy(
+                        validationState = ValidationState(isMobileNumValid = false))
                     !mobileNumber.isMobileNumberValid() ->
                         _registerState.value.copy(
-                            isMobileNumValid = false,
-                            mobileNumberError = "Please enter a valid mobile number",
+                            validationState = ValidationState(isMobileNumValid = false,
+                            mobileNumberError = "Please enter a valid mobile number",)
                         )
-                    else -> _registerState.value.copy(isMobileNumValid = true, mobileNumberError = null)
+                    else -> _registerState.value.copy(validationState = ValidationState(
+                        isMobileNumValid = true, mobileNumberError = null))
                 }
         }
 
         private fun validatePolicy(policy: Boolean) {
-            _registerState.update { it.copy(isPolicyBoxChecked = policy) }
+            _registerState.update { it.copy(uiState = UIState(isPolicyBoxChecked = policy)) }
         }
 
         private fun successValidation() {
-            _registerState.update { it.copy(isPolicyBoxChecked = false, isBottomSheetShow = false, isRegistrationSuccess = false) }
+            _registerState.update { it.copy(
+                uiState = UIState(isPolicyBoxChecked = false,
+                isBottomSheetShow = false),
+                registrationStatus = RegistrationStatus(isRegistrationSuccess = false)) }
         }
 
         private fun resetCredentials() {
-            _registerState.update { it.copy(isPolicyBoxChecked = false, isBottomSheetShow = false) }
+            _registerState.update { it.copy(uiState = UIState(isPolicyBoxChecked = false, isBottomSheetShow = false)) }
         }
 
         private fun failedValidation() {
-            _registerState.update { it.copy(isBottomSheetShow = true) }
+            _registerState.update { it.copy(uiState = UIState(isBottomSheetShow = true)) }
         }
 
         private fun phoneNumberVerification(mobileNumber: String) {
@@ -97,8 +106,8 @@ class RegistrationViewModel
                     } else {
                         _registerState.update {
                             it.copy(
-                                mobileNumberError = "Number Already Used",
-                                isMobileNumValid = false,
+                                validationState = ValidationState(mobileNumberError = "Number Already Used",
+                                isMobileNumValid = false,)
                             )
                         }
 
@@ -168,15 +177,15 @@ class RegistrationViewModel
                 when {
                     _registerState.value.firstName.isEmpty() ->
                         _registerState.value.copy(
-                            isFirstNameValid = false,
-                            firstNameBorder = secondary_red,
-                            firstNameError = "First name can't be empty.",
+                            validationState = ValidationState(isFirstNameValid = false,
+                            firstNameError = "First name can't be empty."),
+                            uiState = UIState(firstNameBorder = secondary_red,)
                         )
                     else ->
                         _registerState.value.copy(
-                            isFirstNameValid = true,
-                            firstNameBorder = neutral_100,
-                            firstNameError = null,
+                            validationState = ValidationState(isFirstNameValid = true,
+                            firstNameError = null),
+                            uiState = UIState(firstNameBorder = neutral_100)
                         )
                 }
         }
@@ -187,76 +196,76 @@ class RegistrationViewModel
                 when {
                     _registerState.value.lastName.isEmpty() ->
                         _registerState.value.copy(
-                            isLastNameValid = false,
-                            lastNameBorder = secondary_red,
-                            lastNameError = "Last name can't be empty.",
+                            validationState = ValidationState(isLastNameValid = false,
+                            lastNameError = "Last name can't be empty."),
+                            uiState = UIState(lastNameBorder = secondary_red)
                         )
                     else ->
                         _registerState.value.copy(
-                            isLastNameValid = true,
-                            lastNameBorder = neutral_100,
-                            lastNameError = null,
+                            validationState = ValidationState(isLastNameValid = true,
+                            lastNameError = null),
+                            uiState = UIState(lastNameBorder = neutral_100)
                         )
                 }
         }
 
-        private fun validatePassword(password: String) {
-            _registerState.update { it.copy(password = password) }
-            var isValid = true
-            var errorMessage: String? = null
+    private fun validatePassword(password: String) {
+        _registerState.update { it.copy(passwordState = PasswordState(password = password)) }
+        var isValid = true
+        var errorMessage: String? = null
 
-            if (password.isEmpty()) {
+        if (password.isEmpty()) {
+            isValid = false
+            errorMessage = "Fulfill password requirements"
+        } else {
+            if (password.length < 6) {
                 isValid = false
                 errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(passwordState = PasswordState(isPassSixCharChecked = false) ) }
             } else {
-                if (password.length < 6) {
-                    isValid = false
-                    errorMessage = "Fulfill password requirements"
-                    _registerState.update { it.copy(isPassSixCharChecked = false) }
-                } else {
-                    _registerState.update { it.copy(isPassSixCharChecked = true) }
-                }
-
-                if (!password.any { it.isUpperCase() }) {
-                    isValid = false
-                    errorMessage = "Fulfill password requirements"
-                    _registerState.update { it.copy(isPassUpperCaseChecked = false) }
-                } else {
-                    _registerState.update { it.copy(isPassUpperCaseChecked = true) }
-                }
-
-                if (!password.any { it.isLowerCase() }) {
-                    isValid = false
-                    errorMessage = "Fulfill password requirements"
-                    _registerState.update { it.copy(isPassLowerCaseChecked = false) }
-                } else {
-                    _registerState.update { it.copy(isPassLowerCaseChecked = true) }
-                }
-
-                if (!password.any { it.isDigit() }) {
-                    isValid = false
-                    errorMessage = "Fulfill password requirements"
-                    _registerState.update { it.copy(isPassNumberChecked = false) }
-                } else {
-                    _registerState.update { it.copy(isPassNumberChecked = true) }
-                }
-
-                if (!password.hasSpecialCharacter()) {
-                    isValid = false
-                    errorMessage = "Fulfill password requirements"
-                    _registerState.update { it.copy(isPassSpecialChecked = false) }
-                } else {
-                    _registerState.update { it.copy(isPassSpecialChecked = true) }
-                }
+                _registerState.update { it.copy(passwordState = PasswordState(isPassSixCharChecked = true)) }
             }
 
-            _registerState.update {
-                it.copy(
-                    isPasswordValid = isValid,
-                    passwordError = if (isValid) null else errorMessage,
-                )
+            if (!password.any { it.isUpperCase() }) {
+                isValid = false
+                errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(passwordState = PasswordState(isPassUpperCaseChecked = false)) }
+            } else {
+                _registerState.update { it.copy(passwordState = PasswordState(isPassUpperCaseChecked = true)) }
+            }
+
+            if (!password.any { it.isLowerCase() }) {
+                isValid = false
+                errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(passwordState = PasswordState(isPassLowerCaseChecked = false)) }
+            } else {
+                _registerState.update { it.copy(passwordState = PasswordState(isPassLowerCaseChecked = true)) }
+            }
+
+            if (!password.any { it.isDigit() }) {
+                isValid = false
+                errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(passwordState = PasswordState(isPassNumberChecked = false)) }
+            } else {
+                _registerState.update { it.copy(passwordState = PasswordState(isPassNumberChecked = true)) }
+            }
+
+            if (!password.hasSpecialCharacter()) {
+                isValid = false
+                errorMessage = "Fulfill password requirements"
+                _registerState.update { it.copy(passwordState = PasswordState(isPassSpecialChecked = false)) }
+            } else {
+                _registerState.update { it.copy(passwordState = PasswordState(isPassSpecialChecked = true)) }
             }
         }
+
+        _registerState.update {
+            it.copy(
+                passwordState = PasswordState(isPasswordValid = isValid,
+                passwordError = if (isValid) null else errorMessage)
+            )
+        }
+    }
 
         @SuppressLint("NewApi")
         private fun registration(regData: RegistrationRequest) {
@@ -264,7 +273,7 @@ class RegistrationViewModel
                 try {
                     val response = registrationRepository.registerAccount(regData)
                     if (response.code == 1) {
-                        _registerState.update { it.copy(isRegistrationSuccess = true, response = response.toString()) }
+                        _registerState.update { it.copy(registrationStatus = RegistrationStatus( isRegistrationSuccess = true),response = response.toString()) }
                     }
                 } catch (
                     @SuppressLint("NewApi") e: HttpException,
@@ -284,10 +293,10 @@ class RegistrationViewModel
         ) {
             when (textFieldName.lowercase()) {
                 "firstname" -> {
-                    _registerState.value = _registerState.value.copy(isFirstnameFocus = focused)
+                    _registerState.value = _registerState.value.copy(uiState = UIState(isFirstnameFocus = focused))
                 }
                 "lastname" -> {
-                    _registerState.value = _registerState.value.copy(isLastnameFocus = focused)
+                    _registerState.value = _registerState.value.copy(uiState = UIState(isLastnameFocus = focused))
                 }
             }
         }
@@ -301,28 +310,31 @@ class RegistrationViewModel
         private fun String.hasSpecialCharacter(): Boolean = any { !it.isLetterOrDigit() }
 
         private fun confirmPassword(confirmPassword: String) {
-            if (confirmPassword == _registerState.value.password) {
+            if (confirmPassword == _registerState.value.passwordState.password) {
                 _registerState.update {
                     it.copy(
-                        confirmPassword = confirmPassword,
-                        passwordError = null,
-                        passwordBorder = neutral_100,
+                        passwordState = PasswordState(
+                            confirmPassword = confirmPassword,
+                            passwordError = null,
+                            passwordBorder = neutral_100)
+
                     )
                 }
-            } else if (!_registerState.value.isPasswordValid) {
+            } else if (!_registerState.value.passwordState.isPasswordValid) {
                 _registerState.update {
                     it.copy(
-                        confirmPassword = confirmPassword,
+                        passwordState = PasswordState(confirmPassword = confirmPassword,
                         passwordError = "Fulfill password requirements",
-                        passwordBorder = secondary_red,
+                        passwordBorder = secondary_red)
                     )
                 }
             } else {
                 _registerState.update {
                     it.copy(
+                        passwordState = PasswordState(
                         confirmPassword = confirmPassword,
                         passwordError = "Password not matched",
-                        passwordBorder = secondary_red,
+                        passwordBorder = secondary_red)
                     )
                 }
             }
